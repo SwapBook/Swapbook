@@ -1,4 +1,15 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import "./App.css";
+
+import { db } from "./firebase";
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
 
 /* =========================
    CONFIGURAÇÃO PIX
@@ -41,37 +52,40 @@ function App() {
   const [filterType, setFilterType] = useState("");
 
   /* =========================
-     INIT / NORMALIZAÇÃO
+     LOGIN SIMPLES
+  ========================= */
+  const login = () => {
+    const u = { name: "Usuário", city: "Minha cidade" };
+    setUser(u);
+  };
+
+  /* =========================
+     FIRESTORE - LEITURA GLOBAL
   ========================= */
   useEffect(() => {
-    const savedUser = JSON.parse(localStorage.getItem("swapbook_user"));
-    const savedObjects =
-      JSON.parse(localStorage.getItem("swapbook_objects")) || [];
+    const q = query(
+      collection(db, "objects"),
+      orderBy("createdAt", "desc")
+    );
 
-    const normalized = savedObjects.map((o) => ({
-      ...o,
-      category: o.category || "Outros",
-      types: o.types || TYPES,
-      featured: o.featured || false,
-      requestedFeatured: o.requestedFeatured || false,
-    }));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setObjects(list);
+    });
 
-    if (savedUser) setUser(savedUser);
-    setObjects(normalized);
+    return () => unsubscribe();
   }, []);
 
   /* =========================
      FUNÇÕES
   ========================= */
-  const login = () => {
-    const u = { name: "Usuário", city: "Minha cidade" };
-    localStorage.setItem("swapbook_user", JSON.stringify(u));
-    setUser(u);
-  };
-
   const handleImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = () => setImage(reader.result);
     reader.readAsDataURL(file);
@@ -83,45 +97,52 @@ function App() {
     );
   };
 
-  const addObject = () => {
-    if (!text || !image || types.length === 0) return;
+  const addObject = async () => {
+    if (!text || !image || types.length === 0) {
+      alert("Preencha descrição, imagem e ao menos um tipo.");
+      return;
+    }
 
-    const obj = {
-      id: Date.now(),
-      text,
-      image,
-      category,
-      types,
-      city: user.city,
-      featured: false,              // 🔒 nunca automático
-      requestedFeatured: requestFeatured, // só pedido
-    };
+    try {
+      await addDoc(collection(db, "objects"), {
+        text,
+        image,
+        category,
+        types,
+        city: user.city,
+        featured: false,
+        requestedFeatured: requestFeatured,
+        createdAt: serverTimestamp(),
+      });
 
-    const updated = [obj, ...objects];
-    setObjects(updated);
-    localStorage.setItem("swapbook_objects", JSON.stringify(updated));
-
-    setText("");
-    setImage(null);
-    setTypes([]);
-    setRequestFeatured(false);
+      setText("");
+      setImage(null);
+      setTypes([]);
+      setRequestFeatured(false);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao salvar no Firestore");
+    }
   };
 
+  /* =========================
+     FILTRO
+  ========================= */
   const filteredObjects = objects
     .filter((o) => {
       const matchText = o.text
-        .toLowerCase()
+        ?.toLowerCase()
         .includes(search.toLowerCase());
 
       const matchCategory =
         filterCategory === "Todas" || o.category === filterCategory;
 
       const matchType =
-        !filterType || o.types.includes(filterType);
+        !filterType || o.types?.includes(filterType);
 
       return matchText && matchCategory && matchType;
     })
-    .sort((a, b) => b.featured - a.featured);
+    .sort((a, b) => (b.featured === true) - (a.featured === true));
 
   /* =========================
      UI
@@ -217,15 +238,12 @@ function App() {
         {requestFeatured && (
           <div style={styles.pixBox}>
             <p>
-              Para solicitar destaque, faça um Pix de <b>{FEATURED_PRICE}</b>
+              Pix de <b>{FEATURED_PRICE}</b>
             </p>
             <p>
-              <b>Chave Pix (Aleatória):</b>
+              <b>Chave:</b>
               <br />
               {PIX_KEY}
-            </p>
-            <p style={{ fontSize: 12, color: "#555" }}>
-              O destaque será ativado após confirmação do pagamento.
             </p>
           </div>
         )}
