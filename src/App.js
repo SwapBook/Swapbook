@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
 import "./App.css";
 
-import { auth, db } from "./firebase";
+import { auth, db, googleProvider } from "./firebase";
 import {
-  GoogleAuthProvider,
   signInWithPopup,
   signOut,
   onAuthStateChanged,
@@ -101,7 +100,7 @@ export default function App() {
 
   const login = async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    await signInWithPopup(auth, googleprovider);
   };
 
   const logout = async () => {
